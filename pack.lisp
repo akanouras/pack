@@ -307,7 +307,29 @@
                   :unpack (compile nil `(lambda () ,(using-byte-order `((nconc ,@(nreverse unpack))))))
                   :size size)))))))
 
-(defgeneric struct-stream-protocol (stream))
+(defgeneric struct-stream-protocol (stream)
+  (:documentation "struct-stream-protocol stream => reader writer
+
+A method for the stream object returning reader and writer
+functions. For an arbitrary object, these should be closures over that
+object. The reader function should return the current octet in the
+object and increment its position by one. It takes no arguments. The
+writer function should write the given octet to the object and
+increment its position by one.
+
+See this example from the pack.lisp source, which ensures vectors can
+be used as streams for the pack-into and unpack functions:
+
+(defmethod struct-stream-protocol ((vector vector))
+  (values
+   (let ((i 0))
+     (lambda ()
+       (prog1 (aref vector i)
+         (incf i))))
+   (let ((i 0))
+     (lambda (octet)
+       (setf (aref vector i) octet)
+       (incf i)))))"))
 
 (defmethod struct-stream-protocol ((stream stream))
   (values
@@ -338,6 +360,13 @@
   stream)
 
 (defun pack (string &rest args)
+  "pack spec &rest args => array
+
+Packs arguments according to spec as an octet buffer (simple array
+with 8-bit unsigned bytes).
+
+The spec string should be formatted as given in
+http://docs.python.org/library/struct.html#byte-order-size-and-alignment"
   (apply #'pack* (compile-struct-string string) nil args))
 
 (define-compiler-macro pack (&whole form string &rest args)
@@ -346,6 +375,11 @@
       form))
 
 (defun pack-into (string stream &rest args)
+  "pack-into spec stream &rest args => stream
+
+Packs arguments according to spec into stream, which should obey the
+stream struct protocol, i.e. a specialized method
+struct-stream-protocol should exist for the stream."
   (apply #'pack* (compile-struct-string string) stream args))
 
 (define-compiler-macro pack-into (&whole form string stream &rest args)
@@ -362,6 +396,9 @@
       (funcall (getf compiled :unpack)))))
 
 (defun unpack (string stream)
+  "unpack spec stream => list
+
+Unpacks bytes from stream according to spec and returns them in a list."
   (unpack* (compile-struct-string string) stream))
 
 (define-compiler-macro unpack (&whole form string stream)
@@ -370,6 +407,9 @@
       form))
 
 (defun calc-size (string)
+  "calc-size spec => size
+
+Calculates and returns the size (in octets) that the spec specifies."
   (getf (compile-struct-string string) :size))
 
 (define-compiler-macro calc-size (&whole form string)
